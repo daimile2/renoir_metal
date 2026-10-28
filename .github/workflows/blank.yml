@@ -21,6 +21,7 @@ jobs:
             -o vector_add.air
 
           xcrun -sdk iphoneos metallib \
+            -target air64-apple-ios16.5 \
             vector_add.air \
             -o vector_add.metallib
 
