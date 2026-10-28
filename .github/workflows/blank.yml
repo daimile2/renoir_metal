@@ -1,4 +1,4 @@
-name: Build Metal
+name: Build Metal for iOS
 
 on:
   workflow_dispatch:
@@ -6,18 +6,26 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compile Metal shader
+      - name: Compile Metal shader for iOS 16.5
         run: |
-          xcrun -sdk macosx metal -c vector_add.metal -o vector_add.air
-          xcrun -sdk macosx metallib vector_add.air -o vector_add.metallib
+          xcrun -sdk iphoneos metal -c \
+            -target air64-apple-ios16.5 \
+            -std=metal3.1 \
+            vector_add.metal \
+            -o vector_add.air
 
-      - name: Upload Metal library
+          xcrun -sdk iphoneos metallib \
+            vector_add.air \
+            -o vector_add.metallib
+
+      - name: Upload iOS Metal library
         uses: actions/upload-artifact@v4
         with:
-          name: vector_add-metallib
+          name: vector_add-ios16.5-metallib
           path: vector_add.metallib
