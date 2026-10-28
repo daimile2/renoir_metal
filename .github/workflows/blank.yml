@@ -12,21 +12,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compile Metal shader for iOS 16.5
+      - name: Compile and validate
+        shell: bash
         run: |
-          xcrun -sdk iphoneos metal -c \
-            -target air64-apple-ios16.5 \
-            -std=metal3.1 \
-            vector_add.metal \
-            -o vector_add.air
+          set -euo pipefail
+          mkdir -p out
+          cp vector_add.metal out/
 
-          xcrun -sdk iphoneos metal \
-            -target air64-apple-ios16.5 \
-            vector_add.air \
-            -o vector_add.metallib
+          xcodebuild -version > out/toolchain.txt
+          xcrun --sdk iphoneos metal --version >> out/toolchain.txt
 
-      - name: Upload iOS Metal library
+          xcrun --sdk iphoneos metal \
+            -std=ios-metal2.4 \
+            -mios-version-min=16.5 \
+            -c vector_add.metal \
+            -o out/vector_add.air
+
+          xcrun --sdk iphoneos metallib \
+            out/vector_add.air \
+            -o out/vector_add.metallib
+
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+
+          b = Path("out/vector_add.metallib").read_bytes()
+          assert len(b) >= 88 and b[:4] == b"MTLB", "不是有效 MTLB"
+          total = struct.unpack_from("<Q", b, 16)[0]
+          funcs = struct.unpack_from("<Q", b, 24)[0]
+          bc, size = struct.unpack_from("<QQ", b, 72)
+
+          assert total == len(b), "文件长度不符"
+          assert funcs + 4 <= total, "函数区越界"
+          count = struct.unpack_from("<I", b, funcs)[0]
+          assert count > 0, "空库：没有函数"
+          assert size > 0 and bc + size <= total, "AIR 为空或越界"
+          assert b"star_vector_add\x00" in b[funcs:bc], "缺少测试函数"
+          print(f"容器检查通过：functions={count}, AIR={size} bytes")
+          PY
+
+          shasum -a 256 out/vector_add.* > out/sha256.txt
+
+      - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: vector_add-ios16.5-metallib
-          path: vector_add.metallib
+          name: vector-add-ios16.5
+          path: out/
+          if-no-files-found: error
