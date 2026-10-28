@@ -1,0 +1,23 @@
+name: Build Metal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile Metal shader
+        run: |
+          xcrun -sdk macosx metal -c vector_add.metal -o vector_add.air
+          xcrun -sdk macosx metallib vector_add.air -o vector_add.metallib
+
+      - name: Upload Metal library
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector_add-metallib
+          path: vector_add.metallib
