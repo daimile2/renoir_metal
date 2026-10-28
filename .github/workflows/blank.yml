@@ -20,7 +20,7 @@ jobs:
             vector_add.metal \
             -o vector_add.air
 
-          xcrun -sdk iphoneos metallib \
+          xcrun -sdk iphoneos metal \
             -target air64-apple-ios16.5 \
             vector_add.air \
             -o vector_add.metallib
