@@ -59,3 +59,52 @@ jobs:
           name: vector-add-ios16.5
           path: out/
           if-no-files-found: error
+
+      - name: Compile and validate render fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p render-out
+          cp out/toolchain.txt render-out/
+          for src in render/*.metal; do
+            name=$(basename "$src" .metal)
+            cp "$src" render-out/
+            xcrun --sdk iphoneos metal \
+              -std=ios-metal2.4 \
+              -mios-version-min=16.5 \
+              -c "$src" \
+              -o "render-out/$name.air"
+            xcrun --sdk iphoneos metallib \
+              "render-out/$name.air" \
+              -o "render-out/$name.metallib"
+            python3 - "$src" "render-out/$name.metallib" <<'PY'
+          import re, struct, sys
+          from pathlib import Path
+
+          src, lib = sys.argv[1], sys.argv[2]
+          names = re.findall(r'^(?:vertex|fragment)\s+\w+\s+(\w+)\s*\(', Path(src).read_text(), re.M)
+          b = Path(lib).read_bytes()
+          assert names, "源码没有入口函数"
+          assert len(b) >= 88 and b[:4] == b"MTLB", "不是有效 MTLB"
+          total = struct.unpack_from("<Q", b, 16)[0]
+          funcs = struct.unpack_from("<Q", b, 24)[0]
+          bc, size = struct.unpack_from("<QQ", b, 72)
+
+          assert total == len(b), "文件长度不符"
+          assert funcs + 4 <= total, "函数区越界"
+          count = struct.unpack_from("<I", b, funcs)[0]
+          assert count == len(names), f"函数数{count}与源码入口{len(names)}不符"
+          assert size > 0 and bc + size <= total, "AIR 为空或越界"
+          for name in names:
+              assert name.encode() + b"\x00" in b[funcs:bc], f"缺少函数 {name}"
+          print(f"{lib}: functions={count} {names}, AIR={size} bytes")
+          PY
+          done
+          shasum -a 256 render-out/*.metal render-out/*.air render-out/*.metallib > render-out/sha256.txt
+
+      - name: Upload render fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-ios16.5
+          path: render-out/
+          if-no-files-found: error
